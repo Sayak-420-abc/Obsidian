@@ -1,0 +1,872 @@
+# Rebuild Implementation Plan: Business-Facing CSV Text-to-SQL Platform (with Clerk Auth, No Docker)
+
+This plan migrates the Text-to-SQL console prototype into a production-grade, multi-tenant application designed **entirely for business users**. Instead of connecting to remote developer databases, business users drag-and-drop CSV files. These CSVs are automatically ingested into a cloud database as dynamic tables and queried using natural language.
+
+User authentication is managed via **Clerk**, and the database backend is **Supabase (PostgreSQL)**, accessed directly via SQLAlchemy (with asyncpg). The application runs directly on the host operating system without Docker.
+
+---
+
+## Database Architecture: Supabase (PostgreSQL)
+
+The database backend is **Supabase (PostgreSQL)**. This architecture is chosen for the following critical reasons:
+* **Native SQL Compatibility**: The core product is a **Text-to-SQL** generator. LLMs (e.g. Gemini) are highly accurate when generating standard ANSI/PostgreSQL SQL queries.
+* **Agentic Self-Healing**: The agent's self-healing loop relies on capturing database syntax, column, or relation errors and feeding them back to the LLM. PostgreSQL returns precise relational syntax errors that allow the LLM to correct its query instantly.
+* **Relational Joins**: Business users frequently want to cross-reference multiple uploaded CSVs (e.g., joining `sales.csv` and `regions.csv`). PostgreSQL handles joins natively via standard SQL `JOIN`.
+* **Strong Schemas & Indexes**: PostgreSQL enforces type inference during CSV import, which optimizes query performance and prevents dirty-data crashes.
+* **Security & Sandboxing**: All dynamic CSV tables are hosted in a dedicated PostgreSQL schema named `csv_data`, completely isolated from application metadata tables (`public.db_connections`, `public.query_logs`).
+
+---
+
+## Key Feature & Architecture Redefinition
+
+1. **Self-Service CSV Uploader**: Users drag-and-drop CSV files (max 10MB limit). The backend dynamically parses, sanitizes column names (preventing SQL injection & duplication), replaces NaNs, and inserts all records in bulk.
+2. **Clerk Authentication**: Frontend routes are secured with Clerk (`@clerk/nextjs`). Backend routes verify the JWT passed in the Bearer header using Clerk's JSON Web Key Set (JWKS).
+3. **Database Schema Integration**: Clerk user IDs are strings (e.g. `user_2N7B...`). All database tables and SQLAlchemy models are modified to use `String(100)` for the `user_id` field instead of native PostgreSQL `UUID` to prevent type-casting errors. We drop ORM relationships entirely and rely on flat foreign keys with explicit cascading DB constraints to simplify execution.
+4. **Direct Postgres DDL & Schema Management**: Because all data is stored natively inside our Postgres instance, we **do not need Supabase Vault** or the Supabase Python SDK. Schema management and dynamic table creation are performed directly via SQLAlchemy async connections.
+5. **No Docker Integration**: We run frontend and backend directly on the host machine using Python Virtual Environments (`venv`) and Node Package Manager (`npm`).
+6. **Multi-Tenancy Guardrail**: Because the database is queried directly using connection strings, PostgreSQL's Row-Level Security (RLS) is disabled for dynamic/metadata queries. Tenancy is enforced at the application layer via strict FastAPI ownership verification (`_get_owned_connection`), combined with SQL parsing security checks.
+7. **Defense-in-Depth SQL Sandboxing**:
+   * All queries are strictly validated to be read-only `SELECT` statements using `sqlparse`.
+   * The backend verifies that the generated SQL only references tables matching the user's uploaded `db_id`s, allowing cross-CSV joins within the same user's context but blocking access to other tenants' data or application metadata tables.
+
+---
+
+## Environment Variables Configuration
+
+### 1. Backend Environment (`backend/.env`)
+```env
+# Supabase Database URL (Uses Port 6543 for PgBouncer transaction pooling)
+METADATA_DATABASE_URL=postgresql://postgres:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?sslmode=require
+
+# Clerk JWKS endpoint to pull verification keys locally
+CLERK_JWKS_URL=https://<your-clerk-frontend-api>/.well-known/jwks.json
+
+# Google Gemini API key(s) - Comma-separated for round-robin rotation, or single key
+GEMINI_API_KEYS=AIza...,AIza...
+```
+
+### 2. Frontend Environment (`frontend/.env.local`)
+```env
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+---
+
+## Complete Source Code Architecture
+
+### 1. Pinned Requirements (`backend/requirements.txt`)
+```txt
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
+pandas>=2.2.0
+numpy>=1.26.0
+PyJWT[crypto]>=2.8.0
+python-multipart>=0.0.9
+slowapi>=0.1.9
+python-dotenv>=1.0.0
+google-generativeai>=0.5.0
+sqlparse>=0.5.0
+```
+
+### 2. Database Models (`backend/db_models.py`)
+```python
+"""
+backend/db_models.py
+
+Production-grade async SQLAlchemy models for Supabase PostgreSQL (Clerk Auth compatible).
+"""
+
+import os
+import uuid
+import datetime
+
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession,
+)
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Text,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+
+# ---------------------------------------------------------------------------
+# Engine Configuration
+# ---------------------------------------------------------------------------
+
+_RAW_URL = os.getenv("METADATA_DATABASE_URL", "")
+
+# Normalize the scheme to postgresql+asyncpg
+if _RAW_URL.startswith("postgres://"):
+    DATABASE_URL = _RAW_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _RAW_URL.startswith("postgresql://"):
+    DATABASE_URL = _RAW_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    DATABASE_URL = _RAW_URL  # already has the right scheme
+
+
+async_engine = create_async_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+
+    # Keep pool small; PgBouncer (port 6543) manages the real
+    # connection pool on Supabase's side.
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=300,
+
+    connect_args={
+        # CRITICAL: asyncpg caches prepared statements by default.
+        # PgBouncer in transaction-pooling mode (port 6543) does NOT support
+        # them. Setting statement_cache_size=0 disables caching entirely and
+        # prevents the runtime crash.
+        "statement_cache_size": 0,
+
+        # Supabase requires SSL on all connections.
+        "ssl": "require",
+    },
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    bind=async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+Base = declarative_base()
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+class DatabaseConnection(Base):
+    """
+    Stores one record per CSV dataset the user has uploaded.
+    Represents metadata about the user's datasets.
+    """
+    __tablename__ = "db_connections"
+
+    db_id = Column(
+        String(50),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+
+    # String user_id for Clerk compatibility (format e.g. "user_...")
+    user_id = Column(String(100), nullable=False, index=True)
+
+    name = Column(String(100), nullable=False)
+    db_type = Column(String(20), nullable=False, default="csv")  # always "csv"
+
+    schema_name = Column(String(100), nullable=False, default="csv_data")  # always "csv_data"
+    table_name = Column(String(100), nullable=True)  # clean hyphenless table name, e.g. "upload_abc123"
+    tables_json = Column(JSONB, nullable=True)          # cached schema representation
+    is_deleted = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class QueryLog(Base):
+    """
+    Immutable execution record written after every query run.
+    Uses flat foreign key attributes instead of complex ORM relationships.
+    """
+    __tablename__ = "query_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+
+    # Cascade deletes to prevent orphaned logs
+    db_id = Column(
+        String(50),
+        ForeignKey("db_connections.db_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    user_id = Column(String(100), nullable=False, index=True)
+
+    question = Column(Text, nullable=False)
+    sql_query = Column(Text, nullable=True)
+
+    result_json = Column(JSONB, nullable=True)   # rows returned by the query
+    columns_json = Column(JSONB, nullable=True)  # column header metadata
+    trace_json = Column(JSONB, nullable=True)    # self-healing step log
+
+    attempts = Column(Integer, default=1)
+    execution_time_ms = Column(Integer, default=0)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Session Dependency
+# ---------------------------------------------------------------------------
+
+async def get_db_session():
+    """
+    FastAPI dependency that yields a scoped AsyncSession.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+# ---------------------------------------------------------------------------
+# Table Initializer (dev / CI only)
+# ---------------------------------------------------------------------------
+
+async def init_metadata_db():
+    """
+    Creates schemas and tables that do not yet exist. Safe to call on startup.
+    """
+    async with async_engine.begin() as conn:
+        # Create target schema for dynamic CSV uploads
+        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS csv_data"))
+        # Create tables
+        await conn.run_sync(Base.metadata.create_all)
+```
+
+### 3. Authentication & JWT Validation (`backend/auth.py`)
+```python
+"""
+backend/auth.py
+
+JWT verification for Clerk Authentication.
+"""
+
+import os
+import logging
+from typing import Any
+
+import jwt                              # pip install PyJWT
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Environment & JWKS Setup
+# ---------------------------------------------------------------------------
+
+CLERK_JWKS_URL: str = os.environ["CLERK_JWKS_URL"]
+
+# PyJWKClient caches the keys locally, and lifespan=3600 refreshes them
+# every hour to handle Clerk key rotations seamlessly.
+jwks_client = jwt.PyJWKClient(
+    CLERK_JWKS_URL,
+    cache_keys=True,
+    lifespan=3600,
+)
+
+# ---------------------------------------------------------------------------
+# Bearer extractor
+# ---------------------------------------------------------------------------
+
+_bearer = HTTPBearer(auto_error=True)
+
+# ---------------------------------------------------------------------------
+# Local JWT verification
+# ---------------------------------------------------------------------------
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> dict[str, Any]:
+    """
+    Decode and verify the Clerk JWT locally using JWKS public keys.
+    """
+    token = credentials.credentials
+    try:
+        # Fetch the signing key from Clerk's JWKS endpoint based on JWT header key ID
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        
+        # Decode and verify token signature using RS256 algorithm
+        payload: dict[str, Any] = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            options={"verify_exp": True, "verify_aud": False},
+        )
+        return payload
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
+        )
+    except jwt.InvalidTokenError as exc:
+        logger.warning("Clerk JWT validation failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token.",
+        )
+
+
+def get_user_id(user: dict[str, Any]) -> str:
+    """
+    Extract the string user_id from the decoded Clerk JWT payload.
+    The 'sub' claim is always present and equals the Clerk user ID (e.g. user_...).
+    """
+    try:
+        return str(user["sub"])
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not extract user ID from token.",
+        ) from exc
+```
+
+### 4. FastAPI Web Server API (`backend/main.py`)
+```python
+"""
+backend/main.py
+
+FastAPI application entry point. Handles uploader, query, and session metadata.
+"""
+
+import os
+import re
+import uuid
+import logging
+from contextlib import asynccontextmanager
+from typing import Any, Optional
+
+import numpy as np
+import pandas as pd
+import sqlparse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Query, Depends, Request, BackgroundTasks, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from sqlalchemy import select, update, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from auth import get_current_user, get_user_id
+from db_models import get_db_session, init_metadata_db, DatabaseConnection, QueryLog, async_engine
+from text_to_sql import run_text_to_sql, run_raw_sql, get_schema_structured
+
+logger = logging.getLogger(__name__)
+
+# Initialize slowapi rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing metadata database...")
+    await init_metadata_db()
+    yield
+    logger.info("Shutdown complete.")
+
+app = FastAPI(
+    title="Text-to-SQL API",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS Middleware Setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "PATCH"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+# ---------------------------------------------------------------------------
+# Request / Response Schemas
+# ---------------------------------------------------------------------------
+
+class QueryRequest(BaseModel):
+    db_id: str
+    question: str
+    model: str = "gemini-1.5-flash"
+    temperature: float = 0.0
+    instruction: str = ""
+
+class RawQueryRequest(BaseModel):
+    db_id: str
+    sql: str
+
+class RenameRequest(BaseModel):
+    name: str
+
+class DeleteConfirmRequest(BaseModel):
+    confirm: bool
+
+# ---------------------------------------------------------------------------
+# Security Helpers (SQL Audit & Ownership Guard)
+# ---------------------------------------------------------------------------
+
+def sanitize_column_name(col: str) -> str:
+    col = re.sub(r"[^\w]", "_", col.strip())
+    if not col or col[0].isdigit():
+        col = f"col_{col}" if col else "col"
+    return col.lower()[:63]
+
+def deduplicate_columns(cols: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for col in cols:
+        candidate = col
+        i = 1
+        while candidate in seen:
+            candidate = f"{col}_{i}"
+            i += 1
+        seen.add(candidate)
+        result.append(candidate)
+    return result
+
+def extract_table_names(token_group) -> list[str]:
+    names = []
+    from_seen = False
+    for token in token_group.tokens:
+        if token.is_group:
+            names.extend(extract_table_names(token))
+            
+        if from_seen:
+            if isinstance(token, sqlparse.sql.IdentifierList):
+                for identifier in token.get_identifiers():
+                    real_name = identifier.get_real_name()
+                    if real_name:
+                        names.append(real_name.lower().strip('"`'))
+                from_seen = False
+            elif isinstance(token, sqlparse.sql.Identifier):
+                real_name = token.get_real_name()
+                if real_name:
+                    names.append(real_name.lower().strip('"`'))
+                from_seen = False
+            elif token.ttype in (sqlparse.tokens.Name, sqlparse.tokens.Name.Builtin):
+                names.append(token.value.lower().strip('"`'))
+                from_seen = False
+            elif not token.is_whitespace and not isinstance(token, sqlparse.sql.Comment):
+                from_seen = False
+                
+        if token.ttype is sqlparse.tokens.Keyword and token.value.upper() in ("FROM", "JOIN"):
+            from_seen = True
+    return names
+
+def audit_table_references(sql: str, allowed_tables: list[str]) -> bool:
+    try:
+        parsed_statements = sqlparse.parse(sql)
+        if len(parsed_statements) != 1:
+            return False
+        parsed = parsed_statements[0]
+        
+        first_token = parsed.token_first(skip_cm=True)
+        is_cte = (
+            first_token is not None
+            and first_token.value.upper() == "WITH"
+        )
+        if parsed.get_type() != "SELECT" and not is_cte:
+            return False
+    except Exception:
+        return False
+
+    cte_names = set()
+    tokens = list(parsed.flatten())
+    
+    mutation_keywords = {
+        "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER", "RENAME", "TRUNCATE", 
+        "REPLACE", "MERGE", "COPY", "DO", "CALL", "GRANT", "REVOKE", "VACUUM", "INTO"
+    }
+    for token in tokens:
+        if token.ttype is sqlparse.tokens.Keyword and token.value.upper() in mutation_keywords:
+            return False
+            
+    for i, token in enumerate(tokens):
+        if token.ttype in (sqlparse.tokens.Name, sqlparse.tokens.Name.Builtin):
+            val_clean = token.value.lower().strip('"`')
+            j = i + 1
+            while j < len(tokens) and (tokens[j].is_whitespace or isinstance(tokens[j], sqlparse.sql.Comment)):
+                j += 1
+            if j < len(tokens) and tokens[j].ttype is sqlparse.tokens.Keyword and tokens[j].value.upper() == "AS":
+                j += 1
+                while j < len(tokens) and (tokens[j].is_whitespace or isinstance(tokens[j], sqlparse.sql.Comment)):
+                    j += 1
+                if j < len(tokens) and tokens[j].ttype is sqlparse.tokens.Punctuation and tokens[j].value == "(":
+                    cte_names.add(val_clean)
+
+    forbidden = {"public", "pg_catalog", "information_schema", "db_connections", "query_logs"}
+    table_refs = extract_table_names(parsed)
+    
+    allowed_lowercased = {t.lower() for t in allowed_tables}
+    allowed_lowercased.update(cte_names)
+
+    for token in tokens:
+        if token.ttype in (sqlparse.tokens.Name, sqlparse.tokens.Name.Builtin, sqlparse.tokens.Literal.String.Symbol):
+            val = token.value.lower().strip('"`')
+            if val in forbidden:
+                return False
+
+    non_allowed = [t for t in table_refs if t and t not in allowed_lowercased]
+    return len(non_allowed) == 0
+
+async def _get_owned_connection(db_id: str, user_id: str, db: AsyncSession) -> DatabaseConnection:
+    result = await db.execute(
+        select(DatabaseConnection).where(
+            DatabaseConnection.db_id == db_id,
+            DatabaseConnection.is_deleted == False
+        )
+    )
+    conn = result.scalar_one_or_none()
+    if conn is None:
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    if conn.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied.")
+    return conn
+
+# ---------------------------------------------------------------------------
+# Background workers
+# ---------------------------------------------------------------------------
+
+async def _hard_drop_schema_table(table_name: str) -> None:
+    try:
+        async with async_engine.begin() as conn:
+            await conn.execute(text(f'DROP TABLE IF EXISTS csv_data."{table_name}" CASCADE;'))
+        logger.info("Table csv_data.%s dropped successfully.", table_name)
+    except Exception as exc:
+        logger.error("Background table drop failed for %s: %s", table_name, exc)
+
+# ---------------------------------------------------------------------------
+# API Routes
+# ---------------------------------------------------------------------------
+
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+@app.post("/upload-db")
+@limiter.limit("5/minute")
+async def upload_database(
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db_session),
+    user: dict = Depends(get_current_user),
+):
+    user_id = get_user_id(user)
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10MB.")
+
+    # Read CSV using Pandas (stream raw bytes)
+    from io import BytesIO
+    try:
+        df = pd.read_csv(BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {str(e)}")
+
+    if df.empty:
+        raise HTTPException(status_code=400, detail="CSV file is empty.")
+
+    # Prepare DataFrame columns and types
+    sanitized_cols = [sanitize_column_name(c) for c in df.columns]
+    sanitized_cols = deduplicate_columns(sanitized_cols)
+    df.columns = sanitized_cols
+
+    # Cast integer columns with nulls back from float64 to nullable Int64 (must run first)
+    for col in df.columns:
+        if df[col].dtype == "float64" and df[col].dropna().apply(float.is_integer).all():
+            df[col] = df[col].astype("Int64")
+
+    # Map all variants of null values to Python None
+    df = df.where(df.notna(), other=None)
+
+    records = [
+        tuple(None if pd.isna(v) or v is pd.NA else v for v in row)
+        for row in df.values.tolist()
+    ]
+
+    # Map column PostgreSQL types
+    column_defs = []
+    tables_json_cols = []
+    for col in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            pg_type = "TIMESTAMP"
+        elif pd.api.types.is_float_dtype(df[col]):
+            pg_type = "NUMERIC"
+        elif pd.api.types.is_integer_dtype(df[col]) or isinstance(df[col].dtype, pd.Int64Dtype):
+            pg_type = "BIGINT"
+        else:
+            pg_type = "TEXT"
+        column_defs.append(f'"{col}" {pg_type}')
+        tables_json_cols.append({"name": col, "type": pg_type})
+
+    db_id = str(uuid.uuid4())
+    table_suffix = db_id.replace("-", "")
+    table_name = f"upload_{table_suffix}"
+
+    # Run DDL to create table
+    ddl = f'CREATE TABLE csv_data."{table_name}" ({", ".join(column_defs)});'
+    try:
+        async with async_engine.begin() as conn:
+            await conn.execute(text(ddl))
+    except Exception as e:
+        logger.error("DDL creation failed for table %s: %s", table_name, e)
+        raise HTTPException(status_code=500, detail="Failed to initialize schema for dataset.")
+
+    # Ingest rows via asyncpg COPY
+    try:
+        async with async_engine.connect() as conn:
+            raw_conn = await conn.get_raw_connection()
+            await raw_conn.driver_connection.copy_records_to_table(
+                table_name,
+                schema_name="csv_data",
+                records=records,
+                columns=sanitized_cols,
+            )
+    except Exception as e:
+        logger.error("Bulk copy insertion failed for table %s: %s", table_name, e)
+        # Drop table if ingestion failed
+        async with async_engine.begin() as conn:
+            await conn.execute(text(f'DROP TABLE IF EXISTS csv_data."{table_name}" CASCADE;'))
+        raise HTTPException(status_code=500, detail=f"Database ingestion failed: {str(e)}")
+
+    # Construct tables_json cache schema
+    tables_json = [{"table_name": table_name, "columns": tables_json_cols}]
+
+    # Log connection metadata
+    conn_rec = DatabaseConnection(
+        db_id=db_id,
+        user_id=user_id,
+        name=file.filename or f"upload_{table_name}",
+        db_type="csv",
+        schema_name="csv_data",
+        table_name=table_name,
+        tables_json=tables_json,
+    )
+    db.add(conn_rec)
+    await db.commit()
+
+    return {"db_id": db_id, "name": conn_rec.name, "table_name": table_name}
+
+@app.post("/query")
+@limiter.limit("15/minute")
+async def query_endpoint(
+    request: Request,
+    body: QueryRequest,
+    db: AsyncSession = Depends(get_db_session),
+    user: dict = Depends(get_current_user),
+):
+    user_id = get_user_id(user)
+    conn_rec = await _get_owned_connection(body.db_id, user_id, db)
+
+    # Get all active tables owned by this user to set allowed scope
+    user_conns_res = await db.execute(
+        select(DatabaseConnection.table_name).where(
+            DatabaseConnection.user_id == user_id,
+            DatabaseConnection.is_deleted == False
+        )
+    )
+    owned_tables = [r[0] for r in user_conns_res.all() if r[0]]
+
+    # Formulate schema-qualified grounding path for LLM pipeline
+    db_uri = f'{os.environ["METADATA_DATABASE_URL"]}|schema=csv_data|tables={",".join(owned_tables)}'
+
+    # Run query
+    result = await run_text_to_sql(
+        question=body.question,
+        db_path=db_uri,
+        model_name=body.model,
+        temperature=body.temperature,
+        custom_system_instruction=body.instruction,
+    )
+    
+    # Audit final generated SQL
+    generated_sql = result.get("sql")
+    if generated_sql:
+        if not audit_table_references(generated_sql, owned_tables):
+            # Block and wipe results to prevent leaks
+            return {
+                "sql": generated_sql,
+                "result": None,
+                "columns": [],
+                "error": "Query validation failed: attempt to access unauthorized tables or schemas.",
+                "attempts": result.get("attempts", 1),
+                "execution_time_ms": result.get("execution_time_ms", 0),
+                "trace": result.get("trace", []) + [{"step": "safety_audit", "status": "blocked", "message": "Access Denied."}]
+            }
+
+    # Persist log
+    log = QueryLog(
+        db_id=body.db_id,
+        user_id=user_id,
+        question=body.question,
+        sql_query=generated_sql,
+        result_json=result.get("result"),
+        columns_json=result.get("columns"),
+        attempts=result.get("attempts", 1),
+        execution_time_ms=result.get("execution_time_ms", 0),
+        error=result.get("error"),
+        trace_json=result.get("trace"),
+    )
+    db.add(log)
+    await db.commit()
+
+    return result
+
+@app.post("/query/raw")
+@limiter.limit("20/minute")
+async def raw_query_endpoint(
+    request: Request,
+    body: RawQueryRequest,
+    db: AsyncSession = Depends(get_db_session),
+    user: dict = Depends(get_current_user),
+):
+    user_id = get_user_id(user)
+    conn_rec = await _get_owned_connection(body.db_id, user_id, db)
+
+    user_conns_res = await db.execute(
+        select(DatabaseConnection.table_name).where(
+            DatabaseConnection.user_id == user_id,
+            DatabaseConnection.is_deleted == False
+        )
+    )
+    owned_tables = [r[0] for r in user_conns_res.all() if r[0]]
+
+    # Audit the raw query
+    if not audit_table_references(body.sql, owned_tables):
+        raise HTTPException(status_code=403, detail="Query contains unauthorized table or schema references.")
+
+    db_uri = f'{os.environ["METADATA_DATABASE_URL"]}|schema=csv_data'
+    result = await run_raw_sql(sql_query=body.sql, db_path=db_uri)
+    return result
+
+@app.get("/sessions")
+async def list_sessions(
+    db: AsyncSession = Depends(get_db_session),
+    user: dict = Depends(get_current_user),
+):
+    user_id = get_user_id(user)
+    result = await db.execute(
+        select(DatabaseConnection).where(
+            DatabaseConnection.user_id == user_id,
+            DatabaseConnection.is_deleted == False
+        )
+    )
+    connections = result.scalars().all()
+    return [
+        {
+            "db_id": c.db_id,
+            "name": c.name,
+            "db_type": c.db_type,
+            "schema_name": c.schema_name,
+            "table_name": c.table_name,
+            "created_at": c.created_at,
+        }
+        for c in connections
+    ]
+
+@app.patch("/sessions/rename/{db_id}")
+async def rename_session(
+    db_id: str,
+    body: RenameRequest,
+    db: AsyncSession = Depends(get_db_session),
+    user: dict = Depends(get_current_user),
+):
+    user_id = get_user_id(user)
+    conn = await _get_owned_connection(db_id, user_id, db)
+    conn.name = body.name
+    await db.commit()
+    return {"db_id": db_id, "name": body.name}
+
+@app.delete("/sessions/{db_id}")
+async def delete_session(
+    db_id: str,
+    body: DeleteConfirmRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db_session),
+    user: dict = Depends(get_current_user),
+):
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="Deletion requires explicit confirmation.")
+
+    user_id = get_user_id(user)
+    conn = await _get_owned_connection(db_id, user_id, db)
+
+    # 1. Soft delete
+    conn.is_deleted = True
+    await db.commit()
+
+    # 2. Hard drop in background
+    if conn.table_name:
+        background_tasks.add_task(_hard_drop_schema_table, conn.table_name)
+
+    return {"status": "deleted", "db_id": db_id}
+
+@app.get("/sessions/{db_id}/schema")
+async def get_schema(
+    db_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    user: dict = Depends(get_current_user),
+):
+    user_id = get_user_id(user)
+    conn = await _get_owned_connection(db_id, user_id, db)
+
+    if conn.tables_json:
+        return conn.tables_json
+
+    # Fetch live schema
+    db_uri = f'{os.environ["METADATA_DATABASE_URL"]}|schema=csv_data|tables={conn.table_name}'
+    schema = await get_schema_structured(db_uri=db_uri)
+    conn.tables_json = schema
+    await db.commit()
+    return schema
+```
+
+### 5. Environment Variables Template (`.env.example`)
+```env
+METADATA_DATABASE_URL=postgresql://postgres:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?sslmode=require
+CLERK_JWKS_URL=https://<your-clerk-frontend-api>/.well-known/jwks.json
+GEMINI_API_KEYS=AIza...,AIza...
+```
+
+---
+
+## Verification Plan
+
+### Local Host Execution Setup
+
+#### Run Backend Locally:
+1. `cd backend`
+2. Create python venv: `python -m venv .venv` and activate it.
+3. Install requirements: `pip install -r requirements.txt`
+4. Run server: `uvicorn main:app --reload --port 8000`
+
+#### Run Frontend Locally:
+1. `cd frontend`
+2. Install npm modules: `npm install`
+3. Start Next.js server: `npm run dev` (running on port 3000)
+
+### Automated & Manual Tests
+- Verify `CREATE SCHEMA IF NOT EXISTS csv_data` executes correctly on start.
+- Upload a test CSV containing malicious characters in headers and verify SQL creation executes without syntax error or DDL injection.
+- Validate that files larger than 10MB are rejected with HTTP 413.
+- Test endpoint authentication with Clerk JWT and check that the JWKS cache updates on key rotations.
+- Perform queries on dataset and confirm that queries referencing non-owned tables are rejected by ownership guards.
+- Run a join query between two of the active user's tables, and verify the query succeeds while queries attempting joins across other tables are blocked.
+- Test comma-separated joins and CTE structures, verifying the query scanner allows legitimate tables/CTEs while strictly blocking unauthorized names.
+- Attempt double-quoted schema queries (e.g. `"public".db_connections`) and verify they are blocked, while unquoted literals (e.g. `'public'`) are allowed.

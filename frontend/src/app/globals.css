@@ -1,0 +1,405 @@
+@import "tailwindcss";
+
+/* ============================================================
+   SUPABASE DESIGN SYSTEM & THEME
+   ============================================================ */
+
+@theme inline {
+  --color-supabase-bg: #0c0c0c;
+  --color-supabase-surface: #1e1e1e;
+  --color-supabase-panel: #262626;
+  --color-supabase-border: #2e2e2e;
+  --color-supabase-border-light: #404040;
+  --color-supabase-green: #3ecf8e;
+  --color-supabase-green-hover: #30b87c;
+  --color-supabase-text: #ededed;
+  --color-supabase-text-muted: #a3a3a3;
+  --color-supabase-text-dim: #737373;
+
+  --color-accent-indigo: #6366f1;
+  --color-accent-red: #ef4444;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ---- Base ---- */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--color-supabase-bg);
+  color: var(--color-supabase-text);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+}
+
+/* ---- Custom Scrollbar ---- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #171717;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-supabase-border);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-supabase-green);
+}
+
+/* ---- Supabase Style Cards ---- */
+.supabase-card {
+  background: #171717;
+  border: 1px solid var(--color-supabase-border);
+  border-radius: 8px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.supabase-card:hover {
+  border-color: var(--color-supabase-border-light);
+}
+
+.supabase-btn-primary {
+  background: var(--color-supabase-green);
+  color: #000;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.supabase-btn-primary:hover {
+  background: var(--color-supabase-green-hover);
+  box-shadow: 0 0 20px rgba(62, 207, 142, 0.2);
+}
+
+.supabase-btn-secondary {
+  background: #1e1e1e;
+  border: 1px solid var(--color-supabase-border);
+  color: var(--color-supabase-text);
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.supabase-btn-secondary:hover {
+  background: var(--color-supabase-panel);
+  border-color: var(--color-supabase-border-light);
+}
+
+/* ---- SQL Code Highlight ---- */
+.sql-code {
+  background: #141414;
+  border: 1px solid var(--color-supabase-border);
+  border-radius: 6px;
+  padding: 16px;
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #e5e7eb;
+  overflow-x: auto;
+}
+
+.sql-keyword {
+  color: #3ecf8e;
+  font-weight: 600;
+}
+.sql-string {
+  color: #fca5a5;
+}
+.sql-number {
+  color: #fcd34d;
+}
+.sql-function {
+  color: #c084fc;
+}
+
+/* ---- Data Table ---- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table thead th {
+  background: #171717;
+  color: var(--color-supabase-text-muted);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-supabase-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.data-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-supabase-border);
+  color: var(--color-supabase-text);
+  font-family: var(--font-mono), monospace;
+}
+.data-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ---- Upload Dropzone ---- */
+.dropzone {
+  border: 1px dashed var(--color-supabase-border);
+  border-radius: 6px;
+  padding: 20px;
+  text-align: center;
+  background: #141414;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.dropzone:hover {
+  border-color: var(--color-supabase-green);
+  background: rgba(62, 207, 142, 0.02);
+}
+
+/* ---- Status Dot Indicators ---- */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.status-dot.running {
+  background: var(--color-accent-indigo);
+  animation: pulse-glow 1.2s ease-in-out infinite;
+}
+.status-dot.success {
+  background: var(--color-supabase-green);
+}
+.status-dot.error {
+  background: var(--color-accent-red);
+}
+
+/* ---- Animations ---- */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* ============================================================
+   CLERK OVERRIDES FOR SUPABASE THEME
+   ============================================================ */
+
+/* Card / Modal Backgrounds and Borders */
+.cl-card,
+.cl-userButtonPopoverCard,
+.cl-userProfileModalCard,
+.cl-signIn-root,
+.cl-signUp-root,
+.cl-userProfile-root {
+  background-color: #171717 !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 6px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Header & Identity Text */
+.cl-headerTitle,
+.cl-userPreviewMainIdentifier,
+.cl-profileSectionTitleText,
+.cl-accordionHeaderTitle,
+.cl-userButtonPopoverHeaderTitle,
+.cl-userButtonPopoverHeaderRow p,
+.cl-userButtonPopoverHeaderRow h1,
+.cl-userButtonPopoverHeaderRow h2,
+.cl-userButtonPopoverHeaderRow h3,
+.cl-userButtonPopoverHeaderRow h4,
+.cl-userButtonPopoverHeaderRow span,
+.cl-userButtonPopoverHeaderRow div {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+.cl-headerSubtitle,
+.cl-userPreviewSecondaryIdentifier,
+.cl-userButtonPopoverHeaderSubtitle {
+  color: #a3a3a3 !important;
+}
+
+/* Form fields styling */
+.cl-formFieldLabel {
+  color: #ededed !important;
+  font-weight: 500 !important;
+}
+.cl-formFieldInput {
+  background-color: #141414 !important;
+  border: 1px solid #2e2e2e !important;
+  color: #ffffff !important;
+  border-radius: 6px !important;
+}
+.cl-formFieldInput::placeholder {
+  color: #a3a3a3 !important; /* Brighter placeholder grey matching inputs */
+}
+.cl-formFieldInput:focus {
+  border-color: #3ecf8e !important;
+  outline: none !important;
+}
+
+/* Primary Action Button styling */
+.cl-formButtonPrimary {
+  background-color: #24b47e !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  border: none !important;
+  transition: background-color 0.2s ease !important;
+}
+.cl-formButtonPrimary:hover {
+  background-color: #1f9b6c !important;
+}
+
+/* OAuth buttons styling */
+.cl-socialButtonsBlockButton {
+  background-color: #171717 !important;
+  border: 1px solid #2e2e2e !important;
+  color: #ffffff !important;
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+  transition: background-color 0.2s ease !important;
+}
+.cl-socialButtonsBlockButton:hover {
+  background-color: #222222 !important;
+}
+.cl-socialButtonsBlockButtonText {
+  color: #ffffff !important;
+  font-weight: 500 !important;
+}
+
+/* OAuth "LAST USED" Badge styling */
+.cl-badge,
+.cl-socialButtonsBlockButtonBadge,
+.cl-internal-180v3n8 {
+  background-color: #064e3b !important;
+  color: #3ecf8e !important;
+  border: none !important;
+  font-size: 8px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+}
+
+/* Close Button styling */
+.cl-modalCloseButton,
+.cl-modalCloseButton *,
+.cl-internal-1ph4z32,
+.cl-internal-1025a1g {
+  color: #a3a3a3 !important; /* Brighter close button grey */
+  opacity: 1 !important;
+}
+.cl-modalCloseButton:hover,
+.cl-modalCloseButton:hover *,
+.cl-internal-1ph4z32:hover,
+.cl-internal-1025a1g:hover {
+  color: #ffffff !important;
+}
+
+/* Dividers */
+.cl-dividerLine {
+  background-color: #2e2e2e !important;
+}
+.cl-dividerText {
+  color: #a3a3a3 !important; /* Brighter divider text */
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+}
+
+/* Footer links styling */
+.cl-footerActionText {
+  color: #a3a3a3 !important;
+}
+.cl-footerActionLink {
+  color: #3ecf8e !important;
+  font-weight: 600 !important;
+}
+.cl-footerActionLink:hover {
+  color: #30b87c !important;
+  text-decoration: underline !important;
+}
+
+/* User Button Popover dropdown elements */
+.cl-userButtonPopoverActionButton {
+  color: #ffffff !important;
+  transition: background-color 0.15s ease !important;
+}
+.cl-userButtonPopoverActionButton:hover {
+  background-color: #242424 !important;
+}
+.cl-userButtonPopoverActionButtonText {
+  color: #ffffff !important;
+  font-weight: 500 !important;
+}
+.cl-userButtonPopoverActionButtonIcon {
+  color: #3ecf8e !important;
+}
+.cl-userButtonPopoverFooter {
+  background-color: #141414 !important;
+  border-top: 1px solid #2e2e2e !important;
+}
+.cl-userButtonPopoverFooter a,
+.cl-userButtonPopoverFooter button,
+.cl-userButtonPopoverFooter *,
+.cl-footer,
+.cl-footer * {
+  color: #a3a3a3 !important; /* Brighter "secured by clerk" text */
+  opacity: 1 !important;
+}
+.cl-userButtonPopoverFooter a:hover,
+.cl-userButtonPopoverFooter button:hover {
+  color: #ffffff !important;
+}
+
+/* User Profile settings dialog overrides */
+.cl-userProfileModalSidebar {
+  background-color: #141414 !important;
+  border-right: 1px solid #2e2e2e !important;
+}
+.cl-userProfileModalNavbar {
+  background-color: #141414 !important;
+}
+.cl-profilePage {
+  background-color: #171717 !important;
+}
+
+/* ============================================================
+   BROWSER AUTOFILL / AUTOCOMPLETE DARK THEME OVERRIDES
+   ============================================================ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #141414 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+  caret-color: #ffffff !important;
+}
+
+

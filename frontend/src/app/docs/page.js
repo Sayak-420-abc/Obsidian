@@ -9,10 +9,10 @@ export default function DocsPage() {
   const sections = [
     { id: "overview", name: "Overview" },
     { id: "features", name: "Feature List" },
-    { id: "audience", name: "Target Audience" },
+    { id: "audience", name: "Who It's For" },
     { id: "architecture", name: "Agent Architecture" },
-    { id: "safety", name: "Safety & Audit Gates" },
-    { id: "ingestion", name: "Database Ingestion" },
+    { id: "safety", name: "Read-Only by Design" },
+    { id: "ingestion", name: "CSV & Upload Guide" },
     { id: "api-reference", name: "API Reference" }
   ];
 
@@ -90,10 +90,10 @@ export default function DocsPage() {
               Developer Documentation
             </h1>
             <p className="text-sm leading-relaxed text-[var(--color-supabase-text-muted)]">
-              Welcome to the <strong>Obsidian</strong> reference documentation. This platform provides an agentic Text-to-SQL workspace designed to let developers explore, ingest, and query relational data structures using natural language.
+              Welcome to the <strong>Obsidian</strong> documentation. Obsidian is an AI-powered analytics console that lets you explore and query your data using plain English — no SQL expertise needed. Upload a CSV or SQLite file, ask questions in natural language, and get instant tables and charts.
             </p>
             <p className="text-sm leading-relaxed text-[var(--color-supabase-text-muted)]">
-              Unlike static query generators, this system employs closed-loop <strong>error self-healing</strong> and <strong>semantic verification</strong> to correct syntax errors before presenting the results to the user.
+              Behind the scenes, Obsidian uses schema-grounded AI models to generate accurate SQL, automatically detects and fixes query errors through self-healing retry loops, and enforces <strong>read-only access</strong> so your data is never at risk.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
@@ -129,16 +129,16 @@ export default function DocsPage() {
               </div>
 
               <div className="supabase-card p-4 space-y-2">
-                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">2. Sandbox SQL Editor</strong>
+                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">2. SQL Workspace</strong>
                 <p className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed">
-                  A standalone text editor view for executing custom SQL commands directly against the database profile. Supports instant execution feedback and tabular logs of results.
+                  An optional SQL editor for users who want to write or fine-tune queries directly. Supports instant execution feedback and tabular result views.
                 </p>
               </div>
 
               <div className="supabase-card p-4 space-y-2">
-                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">3. Multi-Format Database Ingestion</strong>
+                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">3. CSV & Database Upload</strong>
                 <p className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed">
-                  Seamlessly ingest raw `.csv` data tables or SQLite `.db` databases. The engine automatically handles encoding anomalies (such as UTF-16 Excel exports), sanitizes table headers to `lower_snake_case`, and uploads records to isolated tenant schemas.
+                  Upload your `.csv` spreadsheets or SQLite `.db` files directly. Obsidian automatically handles encoding issues (including Excel exports), cleans up column names, and prepares your data for instant querying.
                 </p>
               </div>
 
@@ -157,16 +157,16 @@ export default function DocsPage() {
               </div>
 
               <div className="supabase-card p-4 space-y-2">
-                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">6. Real-Time Thinking Progress Tracker</strong>
+                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">6. Live Agent Progress Tracker</strong>
                 <p className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed">
-                  Follow the step-by-step thinking process of the agent. Displays execution duration, active schema grounding summaries, generated raw SQL queries, and the exact compilation retry state logs.
+                  Watch the AI think in real time. See each step of the process — from understanding your question, to generating the query, to fixing any errors — with clear status indicators and timing.
                 </p>
               </div>
 
               <div className="supabase-card p-4 space-y-2">
-                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">7. Flexible Agent Customization Parameters</strong>
+                <strong className="text-xs text-[var(--color-supabase-green)] uppercase tracking-wider block">7. Agent Configuration</strong>
                 <p className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed">
-                  Tailor the agent's behavior from the configuration screen. Modify the system prompt instruction templates, adjust model temperatures, specify Gemini model sizes, and change retry execution counts on the fly.
+                  Fine-tune how the AI behaves. Adjust the instruction prompts, choose between different AI model sizes, control creativity levels, and set how many times the agent retries failed queries.
                 </p>
               </div>
             </div>
@@ -176,34 +176,28 @@ export default function DocsPage() {
           {/* Section: Target Audience */}
           <section id="audience" className="scroll-mt-24 space-y-4">
             <h2 className="text-xl font-bold tracking-tight text-white border-b border-[var(--color-supabase-border)] pb-2">
-              Target Audience & Industry Alignment
+              Who Is Obsidian For?
             </h2>
             <p className="text-sm leading-relaxed text-[var(--color-supabase-text-muted)]">
-              This terminal is optimized to bridge the gap between technical schemas and analytical insights across roles:
+              Obsidian is built for anyone who works with data but shouldn't have to write SQL to get answers:
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="supabase-card p-4 space-y-1">
                 <strong className="text-xs text-white uppercase tracking-wider block">Business & Data Analysts</strong>
                 <span className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed block">
-                  Quickly query large tables, aggregates, and multi-join operations using natural language without writing SQL boilerplate code from scratch.
+                  Ask questions about your data in plain English. Get tables, aggregates, and trend charts without writing a single SQL query.
                 </span>
               </div>
               <div className="supabase-card p-4 space-y-1">
                 <strong className="text-xs text-white uppercase tracking-wider block">Product & Operations Managers</strong>
                 <span className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed block">
-                  Access reports, user registrations, and product statistics dynamically without waiting for developer pipelines or engineering tickets.
+                  Pull reports on sales, user metrics, and operational KPIs on demand — no engineering tickets or waiting for dashboards to be built.
                 </span>
               </div>
               <div className="supabase-card p-4 space-y-1">
-                <strong className="text-xs text-white uppercase tracking-wider block">Database Administrators (DBAs)</strong>
+                <strong className="text-xs text-white uppercase tracking-wider block">Non-Technical Teams</strong>
                 <span className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed block">
-                  Instantly prototype schema structures, verify constraints, inspect newly imported tables, and explore custom sqlite files.
-                </span>
-              </div>
-              <div className="supabase-card p-4 space-y-1">
-                <strong className="text-xs text-white uppercase tracking-wider block">Fullstack & Analytics Engineers</strong>
-                <span className="text-[11px] text-[var(--color-supabase-text-muted)] leading-relaxed block">
-                  Integrate text-to-SQL logic by inspecting the isolated API endpoints and understanding schema-grounding paradigms.
+                  Marketing, finance, HR, and other teams can self-serve their data needs. Upload a spreadsheet, ask a question, get an answer.
                 </span>
               </div>
             </div>
@@ -258,20 +252,20 @@ export default function DocsPage() {
           {/* Section: Safety & Audit Gates */}
           <section id="safety" className="scroll-mt-24 space-y-4">
             <h2 className="text-xl font-bold tracking-tight text-white border-b border-[var(--color-supabase-border)] pb-2">
-              Safety & Audit Gates
+              Read-Only by Design
             </h2>
             <p className="text-sm leading-relaxed text-[var(--color-supabase-text-muted)]">
-              To defend database schemas against malicious SQL injections, destructive commands, or privilege escalations, a multi-layer security grid is executed:
+              Obsidian is read-only by design. Your uploaded data can never be modified, deleted, or corrupted through the console. This isn't a security patch — it's a core design principle that makes the tool safe for everyone:
             </p>
             <ul className="list-disc list-inside text-sm text-[var(--color-supabase-text-muted)] space-y-2.5 pl-2">
               <li>
-                <strong className="text-white">SELECT-only Validation:</strong> All generated SQL statement tokens are audited to ensure only read-only queries are executed. Commands containing <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">INSERT</code>, <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">UPDATE</code>, <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">DELETE</code>, <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">DROP</code>, or <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">ALTER</code> are instantly blocked.
+                <strong className="text-white">SELECT-Only by Design:</strong> The AI is instructed to only generate read-only queries. Any query containing <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">INSERT</code>, <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">UPDATE</code>, <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">DELETE</code>, <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">DROP</code>, or <code className="text-accent-red font-mono px-1 py-0.5 rounded bg-[#1a1a1a]">ALTER</code> is automatically blocked before it ever touches your data.
               </li>
               <li>
-                <strong className="text-white">Active Profile Isolation:</strong> Ingestion paths and query grounding are restricted strictly to the active database profile. Queries targeting tables belonging to other users or other sessions are caught and wiped before database execution.
+                <strong className="text-white">Isolated Data Sessions:</strong> Each uploaded dataset lives in its own isolated session. You can only query your own data — there is no cross-session access.
               </li>
               <li>
-                <strong className="text-white">Read-Only Database Connection:</strong> Databases are connected utilizing strict, non-privileged credentials to enforce database-level access control.
+                <strong className="text-white">Read-Only Connections:</strong> Database connections are established with read-only credentials at the infrastructure level, providing a second layer of protection.
               </li>
             </ul>
           </section>

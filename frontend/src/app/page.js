@@ -80,7 +80,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-sm md:text-base text-[var(--color-supabase-text-muted)] leading-relaxed max-w-lg">
-            Obsidian is an open-source, developer-centric Text-to-SQL Agent console. Generates safe SQLite SELECT queries, performs multi-level security audits, and automatically heals syntax errors in real-time execution loops.
+            Obsidian is an open-source AI analytics console that turns plain English questions into safe, read-only SQL queries. Upload your CSV, ask a question, and get instant results — no SQL knowledge required.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center md:justify-start gap-3 pt-2">

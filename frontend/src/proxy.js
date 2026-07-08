@@ -10,10 +10,8 @@ export default clerkMiddleware(async (auth, request) => {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
-    '/((?!_next|[^?]*\\.[^?]*$).*)',
-    // Always run for API routes
-    '/(api|trpc)(.*)',
+    // Skip Next.js internals, static files, and API proxy routes (handled by rewrites)
+    '/((?!_next|api|[^?]*\\.[^?]*$).*)',
     '/__clerk/:path*',
   ],
 };

@@ -44,9 +44,8 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing metadata database...")
-    # Initialize the database. If URL is not valid/empty, raise or log.
     db_url = os.getenv("METADATA_DATABASE_URL", "")
-    if not db_url or "AWS-0" in db_url.upper() or "[PASSWORD]" in db_url:
+    if not db_url or "[REGION]" in db_url.upper() or "[PASSWORD]" in db_url:
         logger.warning("METADATA_DATABASE_URL appears to be unconfigured. Skipping automatic database initialization.")
     else:
         try:

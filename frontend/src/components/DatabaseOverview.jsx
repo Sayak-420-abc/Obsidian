@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import axios from "axios";
+import api from "@/lib/api";
 import { useAuth } from "@clerk/nextjs";
 
 // A custom, lightweight Markdown parser designed to render headers, bullet lists, inline code,
@@ -199,7 +199,7 @@ export default function DatabaseOverview({ dbId, dbName }) {
 
     try {
       const token = await getToken();
-      const res = await axios.post("/api/insights", {
+      const res = await api.post("/insights", {
         question: activeQuestion.trim(),
         db_id: dbId,
       }, {

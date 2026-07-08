@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import axios from "axios";
+import api from "@/lib/api";
 import { useAuth } from "@clerk/nextjs";
 
 export default function SettingsPanel({
@@ -34,7 +34,7 @@ export default function SettingsPanel({
       setPreviewError(null);
       try {
         const token = await getToken();
-        const res = await axios.get("/api/settings/preview", {
+        const res = await api.get("/settings/preview", {
           params: {
             db_id: dbId,
             custom_instruction: systemInstruction,

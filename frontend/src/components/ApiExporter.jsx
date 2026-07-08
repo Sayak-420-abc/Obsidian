@@ -8,6 +8,7 @@ export default function ApiExporter({ question, dbId }) {
 
   const cleanQuestion = question || "What is the most expensive product?";
   const cleanDbId = dbId || "default";
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   // Generate dynamic snippets
   const getSnippet = () => {
@@ -15,7 +16,7 @@ export default function ApiExporter({ question, dbId }) {
       case "python":
         return `import requests
 
-url = "http://localhost:8000/query"
+url = "${apiUrl}/query"
 payload = {
     "question": ${JSON.stringify(cleanQuestion)},
     "db_id": ${JSON.stringify(cleanDbId)}
@@ -31,7 +32,7 @@ else:
     print("Results:", data["result"])`;
 
       case "javascript":
-        return `const url = "http://localhost:8000/query";
+        return `const url = "${apiUrl}/query";
 const payload = {
   question: ${JSON.stringify(cleanQuestion)},
   db_id: ${JSON.stringify(cleanDbId)}
@@ -57,7 +58,7 @@ fetch(url, {
 
       case "curl":
       default:
-        return `curl -X POST "http://localhost:8000/query" \\
+        return `curl -X POST "${apiUrl}/query" \\
   -H "Content-Type: application/json" \\
   -d '{"question": ${JSON.stringify(cleanQuestion)}, "db_id": ${JSON.stringify(cleanDbId)}}'`;
     }

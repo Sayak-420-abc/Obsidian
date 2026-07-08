@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import api from "@/lib/api";
 import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import QueryInput from "@/components/QueryInput";
@@ -115,7 +115,7 @@ export default function Dashboard() {
     try {
       setIsLoading(true);
       const token = await getToken();
-      const res = await axios.get("/api/sessions", {
+      const res = await api.get("/sessions", {
         headers: { Authorization: `Bearer ${token}` }
       });
       const sessions = res.data.map(s => ({
@@ -195,13 +195,13 @@ export default function Dashboard() {
     try {
       const token = await getToken();
       const params = session.db_id ? { db_id: session.db_id } : {};
-      const res = await axios.get("/api/schema", {
+      const res = await api.get("/schema", {
         params,
         headers: { Authorization: `Bearer ${token}` }
       });
       
       // Fetch query execution history logs for this database session
-      const historyRes = await axios.get(`/api/sessions/${session.db_id || "default"}/history`, {
+      const historyRes = await api.get(`/sessions/${session.db_id || "default"}/history`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -247,7 +247,7 @@ export default function Dashboard() {
 
     try {
       const token = await getToken();
-      const res = await axios.post("/api/query", {
+      const res = await api.post("/query", {
         question,
         db_id: dbId,
         model_name: model,
@@ -311,7 +311,7 @@ export default function Dashboard() {
 
     try {
       const token = await getToken();
-      const res = await axios.post("/api/query/raw", {
+      const res = await api.post("/query/raw", {
         sql: rawSql,
         db_id: dbId,
       }, {
@@ -376,7 +376,7 @@ export default function Dashboard() {
 
     try {
       const token = await getToken();
-      await axios.delete(`/api/sessions/${session.db_id}`, {
+      await api.delete(`/sessions/${session.db_id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -416,7 +416,7 @@ export default function Dashboard() {
 
     try {
       const token = await getToken();
-      await axios.post(`/api/sessions/rename/${session.db_id}`, {
+      await api.post(`/sessions/rename/${session.db_id}`, {
         name: editName.trim()
       }, {
         headers: { Authorization: `Bearer ${token}` }
@@ -482,7 +482,7 @@ export default function Dashboard() {
 
     try {
       const token = await getToken();
-      const res = await axios.post("/api/upload-db", formData, {
+      const res = await api.post("/upload-db", formData, {
         headers: { 
           "Content-Type": "multipart/form-data",
           Authorization: `Bearer ${token}`
